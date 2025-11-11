@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Love Chat</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh; display: flex; flex-direction: column; color: #333;
+        }
+        .chat-header {
+            background: linear-gradient(135deg, #ff6b6b, #ff8e8e); color: white;
+            padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header-left h1 { font-size: 1.3rem; margin: 0; }
+        .user-info { font-size: 0.9rem; opacity: 0.9; }
+        .current-user { font-weight: bold; background: rgba(255, 255, 255, 0.2); padding: 4px 10px; border-radius: 15px; }
+        .sync-status { font-size: 0.7rem; margin-top: 3px; opacity: 0.7; }
+        .header-right { display: flex; gap: 10px; }
+        .header-btn {
+            background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 15px; border-radius: 15px; cursor: pointer; font-size: 0.8rem; transition: all 0.3s ease;
+        }
+        .header-btn:hover { background: rgba(255, 255, 255, 0.3); transform: translateY(-1px); }
+        .chat-messages {
+            flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column;
+            gap: 10px; background: rgba(255, 255, 255, 0.05);
+        }
+        .message { max-width: 70%; padding: 10px 15px; border-radius: 18px; position: relative; animation: messagePop 0.3s ease-out; }
+        @keyframes messagePop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .message.ko-ko { background: linear-gradient(135deg, #ff6b6b, #ff8e8e); color: white; align-self: flex-end; border-bottom-right-radius: 5px; }
+        .message.ahn-hnit { background: white; color: #333; align-self: flex-start; border-bottom-left-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .message-sender { font-size: 0.75rem; font-weight: bold; margin-bottom: 3px; opacity: 0.8; }
+        .message-time { font-size: 0.65rem; opacity: 0.6; text-align: right; margin-top: 3px; }
+        .chat-input { background: white; padding: 15px 20px; display: flex; gap: 10px; border-top: 1px solid #eee; }
+        .chat-input input { flex: 1; padding: 12px 15px; border: 2px solid #ff6b6b; border-radius: 25px; font-size: 1rem; outline: none; }
+        .chat-input button { background: linear-gradient(135deg, #ff6b6b, #ff8e8e); color: white; border: none; padding: 12px 20px; border-radius: 25px; cursor: pointer; transition: all 0.3s ease; font-weight: bold; }
+        .chat-input button:hover { transform: scale(1.05); }
+        .chat-footer { background: rgba(255, 255, 255, 0.9); padding: 8px 20px; text-align: center; font-size: 0.75rem; color: #666; }
+        .footer-btn { color: #ff6b6b; text-decoration: none; font-weight: bold; margin: 0 8px; cursor: pointer; }
+        .empty-chat { text-align: center; color: #666; padding: 40px 20px; }
+        .empty-chat .heart { font-size: 3rem; margin-bottom: 15px; }
+        .online-users { display: flex; gap: 15px; font-size: 0.8rem; margin-top: 5px; }
+        .user-status { display: flex; align-items: center; gap: 5px; }
+        .status-dot { width: 6px; height: 6px; background: #4cd964; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .notification { position: fixed; top: 20px; right: 20px; background: #4cd964; color: white; padding: 10px 15px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: none; z-index: 1000; }
+        .typing-indicator { align-self: flex-start; background: white; padding: 8px 12px; border-radius: 15px; font-style: italic; color: #666; display: none; }
+        .typing-indicator.show { display: block; }
+    </style>
+</head>
+<body>
+    <div class="notification" id="notification"></div>
+    
+    <div class="chat-header">
+        <div class="header-left">
+            <h1>💬 Private Love Chat</h1>
+            <div class="user-info">You are: <span id="currentUserDisplay" class="current-user"></span></div>
+            <div class="sync-status" id="syncStatus">🔄 Real-time Connected</div>
+            <div class="online-users">
+                <div class="user-status"><div class="status-dot"></div><span>ကိုကို 💕</span></div>
+                <div class="user-status"><div class="status-dot"></div><span>အနှစ်ကလေး 💝</span></div>
+            </div>
+        </div>
+        <div class="header-right">
+            <button class="header-btn" onclick="clearChatConfirm()">🗑️ Clear</button>
+        </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+        <div class="empty-chat">
+            <div class="heart">💝</div>
+            <h3>Loading messages...</h3>
+            <p>Connecting to real-time chat...</p>
+        </div>
+    </div>
+
+    <div class="typing-indicator" id="typingIndicator">
+        <span id="typingUser"></span> is typing...
+    </div>
+
+    <div class="chat-input">
+        <input type="text" id="messageInput" placeholder="Type your message... 💕" maxlength="500">
+        <button onclick="sendMessage()">Send 💖</button>
+    </div>
+
+    <div class="chat-footer">
+        <a href="index.html" class="footer-btn">← Change User</a>
+        <span class="footer-btn" onclick="clearChatConfirm()">Clear Chat</span>
+        <span class="footer-btn" onclick="exportChat()">Export Chat</span>
+    </div>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCQcOMq7V7qo7Q6q9q9q9q9q9q9q9q9q9q9",
+            authDomain: "love-chat-demo.firebaseapp.com",
+            databaseURL: "https://love-chat-demo-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "love-chat-demo",
+            storageBucket: "love-chat-demo.appspot.com",
+            messagingSenderId: "123456789012",
+            appId: "1:123456789012:web:abc123def456"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let currentUser = '';
+        let isTyping = false;
+        let typingTimer;
+
+        async function initChat() {
+            currentUser = localStorage.getItem('currentUser');
+            if (!currentUser) { 
+                window.location.href = 'index.html'; 
+                return; 
+            }
+            
+            document.getElementById('currentUserDisplay').textContent = 
+                currentUser === 'ko-ko' ? 'ကိုကို 💕' : 'အနှစ်ကလေး 💝';
+
+            // Setup real-time listeners
+            setupRealtimeListeners();
+            
+            // Auto focus
+            setTimeout(() => {
+                document.getElementById('messageInput').focus();
+            }, 500);
+        }
+
+        function setupRealtimeListeners() {
+            // Listen for new messages
+            database.ref('messages').on('value', (snapshot) => {
+                const messages = snapshot.val() || [];
+                displayMessages(Object.values(messages));
+            });
+
+            // Listen for typing indicators
+            database.ref('typing').on('value', (snapshot) => {
+                const typingData = snapshot.val() || {};
+                showTypingIndicator(typingData);
+            });
+        }
+
+        function displayMessages(messages) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const wasAtBottom = isAtBottom();
+            
+            messagesDiv.innerHTML = '';
+            
+            if (messages.length === 0) {
+                messagesDiv.innerHTML = `
+                    <div class="empty-chat">
+                        <div class="heart">💝</div>
+                        <h3>No messages yet</h3>
+                        <p>Start your love conversation here!</p>
+                        <p>Send the first message to begin 💕</p>
+                    </div>
+                `;
+            } else {
+                messages.forEach(msg => {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${msg.sender}`;
+                    messageDiv.innerHTML = `
+                        <div class="message-sender">${msg.sender === 'ko-ko' ? 'ကိုကို 💕' : 'အနှစ်ကလေး 💝'}</div>
+                        ${msg.text}
+                        <div class="message-time">${msg.time}</div>
+                    `;
+                    messagesDiv.appendChild(messageDiv);
+                });
+            }
+            
+            if (wasAtBottom) scrollToBottom();
+        }
+
+        function showTypingIndicator(typingData) {
+            const typingIndicator = document.getElementById('typingIndicator');
+            const typingUserSpan = document.getElementById('typingUser');
+            
+            const otherUser = currentUser === 'ko-ko' ? 'အနှစ်ကလေး 💝' : 'ကိုကို 💕';
+            
+            if (typingData[currentUser === 'ko-ko' ? 'ahn-hnit' : 'ko-ko']) {
+                typingUserSpan.textContent = otherUser;
+                typingIndicator.classList.add('show');
+            } else {
+                typingIndicator.classList.remove('show');
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                const time = new Date().toLocaleTimeString('my-MM', { 
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                });
+                
+                // Save to Firebase
+                const newMessage = {
+                    sender: currentUser,
+                    text: message,
+                    time: time,
+                    timestamp: Date.now()
+                };
+                
+                database.ref('messages').push(newMessage);
+                
+                // Clear typing indicator
+                database.ref('typing/' + currentUser).set(false);
+                
+                input.value = '';
+                input.focus();
+                
+                showNotification('Message sent! ✅');
+            }
+        }
+
+        function handleTyping() {
+            if (!isTyping) {
+                isTyping = true;
+                database.ref('typing/' + currentUser).set(true);
+            }
+            
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => {
+                isTyping = false;
+                database.ref('typing/' + currentUser).set(false);
+            }, 1000);
+        }
+
+        function clearChatConfirm() {
+            if (confirm('🗑️ Clear ALL chat messages?\n\nThis will delete messages for both users.')) {
+                database.ref('messages').remove();
+                showNotification('Chat cleared! 🗑️');
+            }
+        }
+
+        function exportChat() {
+            database.ref('messages').once('value').then((snapshot) => {
+                const messages = snapshot.val() || [];
+                const messageArray = Object.values(messages);
+                
+                if (messageArray.length === 0) {
+                    alert('No messages to export!');
+                    return;
+                }
+                
+                let exportText = '💬 Private Love Chat Export\n';
+                exportText += 'Generated on: ' + new Date().toLocaleString() + '\n\n';
+                
+                messageArray.forEach(msg => {
+                    const sender = msg.sender === 'ko-ko' ? 'ကိုကို 💕' : 'အနှစ်ကလေး 💝';
+                    exportText += `[${msg.time}] ${sender}: ${msg.text}\n`;
+                });
+                
+                const blob = new Blob([exportText], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'love-chat-export.txt';
+                a.click();
+                
+                URL.revokeObjectURL(url);
+                alert('💾 Chat exported successfully!');
+            });
+        }
+
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.style.display = 'block';
+            setTimeout(() => notification.style.display = 'none', 3000);
+        }
+
+        function scrollToBottom() {
+            const messagesDiv = document.getElementById('chatMessages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function isAtBottom() {
+            const messagesDiv = document.getElementById('chatMessages');
+            return messagesDiv.scrollTop + messagesDiv.clientHeight >= messagesDiv.scrollHeight - 50;
+        }
+
+        // Event listeners
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        document.getElementById('messageInput').addEventListener('input', handleTyping);
+
+        document.addEventListener('DOMContentLoaded', initChat);
+    </script>
+</body>
+</html>
